@@ -1,0 +1,4 @@
+/datasets
+*.csv
+*.pdf
+__pycache__
