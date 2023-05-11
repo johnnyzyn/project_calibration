@@ -1,5 +1,8 @@
 /datasets
+/sss
+/final_results
 *.csv
+!/public_results/*.csv
 *.pdf
 __pycache__
 errir_log.txt
