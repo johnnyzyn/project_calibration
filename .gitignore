@@ -2,3 +2,6 @@
 *.csv
 *.pdf
 __pycache__
+errir_log.txt
+yes
+yes.pub

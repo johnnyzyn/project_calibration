@@ -54,7 +54,7 @@ if args.fix_mode == 'True':
                 # Write the subprocess error message to the error log file
                 error_log.write(error_msg)
                 continue
-            #python run_main.py --csv_file ./final_results/cifar10_results_fixed.csv --image_dataset cifar10 --api_type tss --device cuda:1 --fix_mode True --fix_file ./final_results/cifar10_results.csv
+#python run_main.py --csv_file ./final_results/cifar10_results_fixed.csv --image_dataset cifar10 --api_type tss --device cuda:1 --fix_mode True --fix_file ./final_results/cifar10_results.csv
 
 
 else:
