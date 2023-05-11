@@ -10,7 +10,7 @@ from torch.utils.data import SubsetRandomSampler
 from nats_bench import create
 from nats_bench.api_utils import time_string
 from xautodl.models import get_cell_based_tiny_net
-
+import wandb
 import data.cifar10 as cifar10
 import data.cifar100 as cifar100
 import calibration as cal
@@ -26,16 +26,16 @@ from calibration.temp_scale import accuracy
 
 import os
 class MMCE(nn.Module):
-    def __init__(self, lamda=2):
-        super(nn.Module, self).__init__()
-        self.mmce_weighted = MMCE_weighted()
-        self.ce = nn.CrossEntropyLoss()
+    def __init__(self,lamda=2):
+        super(MMCE, self).__init__()
         self.lamda = lamda
+        self.ce = nn.CrossEntropyLoss()
+        self.mmce = MMCE_weighted()
     def forward(self, input, target):
-        return self.lamda*self.mmce_weighted(input, target) + self.ce(input, target)
+        return self.lamda*self.mmce(input, target) + self.ce(input, target)
     
 class FocalLoss(nn.Module):
-    def __init__(self, gamma=3, size_average=False):
+    def __init__(self, gamma=0, size_average=True):
         super(FocalLoss, self).__init__()
         self.gamma = gamma
         self.size_average = size_average
@@ -47,7 +47,7 @@ class FocalLoss(nn.Module):
             input = input.contiguous().view(-1,input.size(2))   # N,H*W,C => N*H*W,C
         target = target.view(-1,1)
 
-        logpt = F.log_softmax(input, -1)
+        logpt = F.log_softmax(input)
         logpt = logpt.gather(1,target)
         logpt = logpt.view(-1)
         pt = logpt.exp()
@@ -60,7 +60,7 @@ class MMCE_weighted(nn.Module):
     """
     Computes MMCE_w loss.
     """
-    def __init__(self, device):
+    def __init__(self, device=torch.device('cuda')):
         super(MMCE_weighted, self).__init__()
         self.device = device
 
@@ -219,6 +219,7 @@ if __name__ == "__main__":
     parser.add_argument("--post_temp", type=str, default='False', help="if using temp scale")
     parser.add_argument("--device", type=str, default='cuda:0', help="device")
     parser.add_argument("--loss", type=str)
+    parser.add_argument("--tss_simple_dir", type=str, default="/hdd/datasets/NATSBench/NATS-sss-v1_0-50262-simple", help="tss simple dir")
 
     args = parser.parse_args()
 
@@ -237,10 +238,11 @@ if __name__ == "__main__":
     sss_dir = "/hdd/datasets/NATSBench/sss-full/"
     tss_dir = "/hdd/datasets/NATSBench/NATS-tss-v1_0-3ffb9-full-extracted/NATS-tss-v1_0-3ffb9-full/"
     tss_simple_dir = "/hdd/datasets/NATSBench/NATS-sss-v1_0-50262-simple"
+    args.save_dir = f"./exp/{args.loss}_{args.archi_num}"
 
-    
+    wandb.init(project="calibration_dataset", entity="linweitao", config=args, name=f"{args.loss}_{args.archi_num}")
     if api_type =='tss':
-        api = create(tss_simple_dir, api_type, fast_mode=True, verbose=False)
+        api = create(args.tss_simple_dir, api_type, fast_mode=True, verbose=False)
         config = api.get_net_config(archi_num, image_dataset)
         net = get_cell_based_tiny_net(config)
         arch = api.arch(archi_num) 
@@ -379,6 +381,10 @@ if __name__ == "__main__":
     elif args.loss == 'mmce':
         criterion = MMCE()
 
+    
+    if not os.path.exists(args.save_dir):
+        os.makedirs(args.save_dir)
+
     for epoch in range(200):
         net.train()
         for batch_idx, (inputs, targets) in enumerate(train_loader):
@@ -387,6 +393,7 @@ if __name__ == "__main__":
 
             loss = criterion(outputs, targets)
             optimizer.zero_grad()
+            nn.utils.clip_grad_norm_(net.parameters(), 2)
             loss.backward()
             optimizer.step()
         scheduler.step()
@@ -404,6 +411,16 @@ if __name__ == "__main__":
             ece['result'], 
             accuracy, 
             optimizer.param_groups[0]['lr']))
+        
+        wandb.log({
+            "ECE": ece['result'],
+            "Accuracy": accuracy,
+            "LR": optimizer.param_groups[0]['lr']
+            }, step=epoch)
+        
+        # save weights if folder is specified
+        torch.save(net.state_dict(), os.path.join(args.save_dir, 'checkpoint.pth'))
 
 # sudo scp -r linwei@10.165.232.195:/media/linwei/disk1/NATS-Bench/NATS-sss-v1_0-50262-simple /hdd/datasets/NATSBench
+
 

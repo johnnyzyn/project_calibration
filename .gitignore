@@ -5,3 +5,5 @@ __pycache__
 errir_log.txt
 yes
 yes.pub
+exp/
+wandb/
