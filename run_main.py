@@ -15,6 +15,9 @@ parser.add_argument("--device", type=str, default='cuda:0', help="device")
 parser.add_argument("--fix_mode", type=str, default='False', help="if fixing missing results")
 parser.add_argument("--fix_file", type=str, default='False', help="directory of file to be fixed")
 
+parser.add_argument("--archi_start", type=int, default=0, help="archi number to start")
+parser.add_argument("--archi_end", type=int, default=10000, help="archi number to end")
+
 args = parser.parse_args()
 
 data = RobustnessDataset(path="/home/younan/project_calibration")
@@ -30,52 +33,114 @@ if args.reset:
 unique_ids = data.non_isomorph_ids
 last_processed_index = unique_ids.index('0')
 
+##If fixing missing ids
 if args.fix_mode == 'True':
-    df = pd.read_csv(args.fix_file)
-    non_isomorph_ids_set = set(data.non_isomorph_ids)
-    config_set = set(df['config'].astype(str))
-    missing_ids = non_isomorph_ids_set.difference(config_set)
-    missing_ids_list = sorted(list(missing_ids), key=int)
+    if args.api_type == 'tss':
+        ##Find missing ids from non_isomorph_ids
 
-    with open("error_log.txt", "a") as error_log:
-        for i in missing_ids_list:
-            archi_num = i
-            try:
-                result = subprocess.run(["python", "main.py", "--archi_num", str(archi_num), "--csv_file", args.csv_file, "--image_dataset", args.image_dataset,"--post_temp",args.post_temp
-                                        ,"--device",args.device], stderr=subprocess.PIPE, text=True)
-                if result.returncode != 0:
-                    error_msg = f"Error occurred for archi_num: {archi_num}. Error: {result.stderr}\n"
+        df = pd.read_csv(args.fix_file)
+        ids_set = set(data.non_isomorph_ids)
+        config_set = set(df['config'].astype(str))
+        missing_ids = ids_set.difference(config_set)
+        missing_ids_list = sorted(list(missing_ids), key=int)
+
+        with open("error_log.txt", "a") as error_log:
+            for i in missing_ids_list:
+                archi_num = i
+                try:
+                    result = subprocess.run(["python", "main.py", "--archi_num", str(archi_num), "--csv_file", args.csv_file, "--image_dataset", args.image_dataset,"--post_temp",args.post_temp
+                                            ,"--device",args.device], stderr=subprocess.PIPE, text=True)
+                    if result.returncode != 0:
+                        error_msg = f"Error occurred for archi_num: {archi_num}. Error: {result.stderr}\n"
+                        print(error_msg)
+                        # Write the error message to the error log file
+                        error_log.write(error_msg)
+                except Exception as e:
+                    error_msg = f"Subprocess error for archi_num: {archi_num}. Error: {e}\n"
                     print(error_msg)
-                    # Write the error message to the error log file
+                    # Write the subprocess error message to the error log file
                     error_log.write(error_msg)
-            except Exception as e:
-                error_msg = f"Subprocess error for archi_num: {archi_num}. Error: {e}\n"
-                print(error_msg)
-                # Write the subprocess error message to the error log file
-                error_log.write(error_msg)
-                continue
+                    continue
+    elif args.api_type == 'sss':
+        ##Find missing ids from range(args.archi_start, args.archi_end)
+
+        df = pd.read_csv(args.fix_file)
+        ids_list = [str(i) for i in range(args.archi_start, args.archi_end)]
+
+        ids_set = set(ids_list)
+        config_set = set(df['config'].astype(str))
+        missing_ids = ids_set.difference(config_set)
+        missing_ids_list = sorted(list(missing_ids), key=int)
+
+        with open("error_log.txt", "a") as error_log:
+            # for i in range(last_processed_index + 1, len(unique_ids)):
+            for archi_num in missing_ids_list:
+                try:
+                    result = subprocess.run(["python", "sss.py"
+                                            , "--archi_num", str(archi_num)
+                                            , "--csv_file", args.csv_file
+                                            , "--image_dataset", args.image_dataset
+                                            ,"--post_temp",args.post_temp
+                                            ,"--api_type",args.api_type
+                                            ,"--device",args.device], stderr=subprocess.PIPE, text=True)
+                    if result.returncode != 0:
+                        error_msg = f"Error occurred for archi_num: {archi_num}, image_dataset: {args.image_dataset}, api_type: {args.api_type}, post_temp: {args.post_temp}. Error: {result.stderr}\n"
+                        print(error_msg)
+                        # Write the error message to the error log file
+                        error_log.write(error_msg)
+                except Exception as e:
+                    error_msg = f"Subprocess error for archi_num: {archi_num}, image_dataset: {args.image_dataset}, api_type: {args.api_type}, post_temp: {args.post_temp}. Error: {e}\n"
+                    print(error_msg)
+                    # Write the subprocess error message to the error log file
+                    error_log.write(error_msg)
+                    continue
 #python run_main.py --csv_file ./final_results/cifar10_results_fixed.csv --image_dataset cifar10 --api_type tss --device cuda:1 --fix_mode True --fix_file ./final_results/cifar10_results.csv
 
 
 else:
-    with open("error_log.txt", "a") as error_log:
-        # for i in range(last_processed_index + 1, len(unique_ids)):
-        for i in range(len(unique_ids)):
-            archi_num = unique_ids[i]
-            try:
-                result = subprocess.run(["python", "main_posttemp.py", "--archi_num", str(archi_num), "--csv_file", args.csv_file, "--image_dataset", args.image_dataset,"--post_temp",args.post_temp
-                                        ,"--device",args.device], stderr=subprocess.PIPE, text=True)
-                if result.returncode != 0:
-                    error_msg = f"Error occurred for archi_num: {archi_num}. Error: {result.stderr}\n"
+    if args.api_type == 'tss':
+        with open("error_log.txt", "a") as error_log:
+            # for i in range(last_processed_index + 1, len(unique_ids)):
+            for i in range(len(unique_ids)):
+                archi_num = unique_ids[i]
+                try:
+                    result = subprocess.run(["python", "main_posttemp.py", "--archi_num", str(archi_num), "--csv_file", args.csv_file, "--image_dataset", args.image_dataset,"--post_temp",args.post_temp
+                                            ,"--device",args.device], stderr=subprocess.PIPE, text=True)
+                    if result.returncode != 0:
+                        error_msg = f"Error occurred for archi_num: {archi_num}. Error: {result.stderr}\n"
+                        print(error_msg)
+                        # Write the error message to the error log file
+                        error_log.write(error_msg)
+                except Exception as e:
+                    error_msg = f"Subprocess error for archi_num: {archi_num}. Error: {e}\n"
                     print(error_msg)
-                    # Write the error message to the error log file
+                    # Write the subprocess error message to the error log file
                     error_log.write(error_msg)
-            except Exception as e:
-                error_msg = f"Subprocess error for archi_num: {archi_num}. Error: {e}\n"
-                print(error_msg)
-                # Write the subprocess error message to the error log file
-                error_log.write(error_msg)
-                continue
+                    continue
+    elif args.api_type == 'sss':
+        with open("error_log.txt", "a") as error_log:
+
+            # for i in range(last_processed_index + 1, len(unique_ids)):
+            for archi_num in range(args.archi_start, args.archi_end):
+                try:
+                    result = subprocess.run(["python", "sss.py"
+                                            , "--archi_num", str(archi_num)
+                                            , "--csv_file", args.csv_file
+                                            , "--image_dataset", args.image_dataset
+                                            ,"--post_temp",args.post_temp
+                                            ,"--api_type",args.api_type
+                                            ,"--device",args.device], stderr=subprocess.PIPE, text=True)
+                    if result.returncode != 0:
+                        error_msg = f"Error occurred for archi_num: {archi_num}, image_dataset: {args.image_dataset}, api_type: {args.api_type}, post_temp: {args.post_temp}. Error: {result.stderr}\n"
+                        print(error_msg)
+                        # Write the error message to the error log file
+                        error_log.write(error_msg)
+                except Exception as e:
+                    error_msg = f"Subprocess error for archi_num: {archi_num}, image_dataset: {args.image_dataset}, api_type: {args.api_type}, post_temp: {args.post_temp}. Error: {e}\n"
+                    print(error_msg)
+                    # Write the subprocess error message to the error log file
+                    error_log.write(error_msg)
+                    continue
 # python run_main.py --csv_file cifar10_results.csv --image_dataset cifar10
 # python run_main.py --csv_file cifar10_posttemp_results.csv --image_dataset cifar10 --post_temp True
 # python run_main.py --csv_file cifar100_results.csv --image_dataset cifar100
