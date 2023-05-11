@@ -35,7 +35,7 @@ with open("error_log.txt", "a") as error_log:
     # for i in range(last_processed_index + 1, len(unique_ids)):
     for archi_num in range(args.archi_start, args.archi_end):
         try:
-            result = subprocess.run(["python", "main_sss.py"
+            result = subprocess.run(["python", "sss.py"
                                      , "--archi_num", str(archi_num)
                                      , "--csv_file", args.csv_file
                                      , "--image_dataset", args.image_dataset

@@ -22,6 +22,7 @@ import inspect
 
 from calibration.temperature_scaling import ModelWithTemperature
 from calibration.temp_scale import accuracy
+from torch.utils.data.sampler import SubsetRandomSampler
 
 import os
 
@@ -98,6 +99,7 @@ if __name__ == "__main__":
     parser.add_argument("--image_dataset", type=str, default="cifar10", help="CIFAR-10, CIFAR-100, and ImageNet16-120")
     parser.add_argument("--api_type", type=str, default="tss", help="NATS-Bench dataset type (tss or sss)")
     parser.add_argument("--post_temp", type=str, default='False', help="if using temp scale")
+    parser.add_argument("--device", type=str, default='cuda:0', help="device")
 
     args = parser.parse_args()
 
@@ -108,6 +110,7 @@ if __name__ == "__main__":
     image_dataset = args.image_dataset
     api_type = args.api_type
     post_temp = args.post_temp
+    device = torch.device(args.device if torch.cuda.is_available() else "cpu")
 
     print(post_temp)
 
@@ -118,42 +121,89 @@ if __name__ == "__main__":
     
     if api_type =='tss':
         api = create(tss_dir, api_type, fast_mode=True, verbose=False)
+        config = api.get_net_config(archi_num, image_dataset)
+        archi_info = api.get_more_info(archi_num, image_dataset, hp='200', is_random=False)
+        # get the info of architecture of the 6111-th model on CIFAR-10
+        net = get_cell_based_tiny_net(config)
+        arch = api.arch(archi_num) 
+
+        # Load the pre-trained weights: params is a dict, where the key is the seed and value is the weights.
+        params = api.get_net_param(archi_num, image_dataset, None, hp ='200')
     elif api_type =='sss':
         api = create(sss_dir, api_type, fast_mode=True, verbose=False)
+        
+        config = api.get_net_config(archi_num, image_dataset)
+        archi_info = api.get_more_info(archi_num, image_dataset, hp='90', is_random=False)
+        # get the info of architecture of the 6111-th model on CIFAR-10
+        net = get_cell_based_tiny_net(config)
+        arch = api.arch(archi_num) 
+
+        # Load the pre-trained weights: params is a dict, where the key is the seed and value is the weights.
+        params = api.get_net_param(archi_num, image_dataset, None, hp ='90')
     else:
         raise ValueError('api_type must be either tss or sss')
 
-    config = api.get_net_config(archi_num, image_dataset)
-    archi_info = api.get_more_info(archi_num, image_dataset, hp='200', is_random=False)
-    # get the info of architecture of the 6111-th model on CIFAR-10
-    net = get_cell_based_tiny_net(config)
-    arch = api.arch(archi_num) 
-
-    # Load the pre-trained weights: params is a dict, where the key is the seed and value is the weights.
-    params = api.get_net_param(archi_num, image_dataset, None, hp ='200')
     net.load_state_dict(next(iter(params.values())))
 
+    # net.load_state_dict(params[777])
     if image_dataset == 'cifar10':
-        test_loader = cifar10.get_test_loader(batch_size=100, shuffle=False, num_workers=4, pin_memory=False)
         if post_temp == 'True':
-            train_loader, val_loader = cifar10.get_train_valid_loader(batch_size = 100,augment = False,
-                            random_seed=42,
-                            valid_size=0.2,
-                            shuffle=True,
-                            num_workers=4,
-                            pin_memory=False,
-                            get_val_temp=0)
-        
+            test_loader, val_loader = cifar10.get_test_valid_loader(batch_size = 256,
+                                random_seed = 42,
+                                valid_size=0.2,
+                                shuffle=True,
+                                num_workers=4, pin_memory=False)
+        else:
+            test_loader = cifar10.get_test_loader(batch_size=256, shuffle=False, num_workers=4, pin_memory=False)
     elif image_dataset == 'cifar100':
-        test_loader = cifar100.get_test_loader(batch_size=100, shuffle=False, num_workers=4, pin_memory=False)
+        if post_temp == 'True':
+            test_loader, val_loader = cifar100.get_test_valid_loader(batch_size = 256,
+                                random_seed = 42,
+                                valid_size=0.2,
+                                shuffle=True,
+                                num_workers=4, pin_memory=False)
+        else:
+            test_loader = cifar100.get_test_loader(batch_size=256, shuffle=False, num_workers=4, pin_memory=False)
     elif image_dataset == 'ImageNet16-120':
-        root = '/home/younan/project_calibration/project_calibration/datasets/ImagenNet16'
+        
+
+        root = './datasets/ImagenNet16'
         train_data, test_data, xshape, class_num = get_datasets(image_dataset, root, 0)
 
-        test_loader = DataLoader(test_data, batch_size=64, shuffle=False)
+        if post_temp == 'True':
+            def imagenet_get_test_valid_loader(batch_size = 256, random_seed= 42, valid_size = 0.2, shuffle = True,
+                                        num_workers=4, pin_memory=False,
+                                    test_dataset=test_data):
+                num_test = len(test_dataset)
+                indices = list(range(num_test))
+                split = int(np.floor(valid_size * num_test))
+
+                if shuffle:
+                    np.random.seed(random_seed)
+                    np.random.shuffle(indices)
+
+                test_idx, valid_idx = indices[split:], indices[:split]
+                
+
+                test_sampler = SubsetRandomSampler(test_idx)
+                valid_sampler = SubsetRandomSampler(valid_idx)
+
+                test_loader = torch.utils.data.DataLoader(
+                    test_dataset, batch_size=batch_size, sampler=test_sampler,
+                    num_workers=num_workers, pin_memory=pin_memory,
+                )
+                valid_loader = torch.utils.data.DataLoader(
+                    test_dataset, batch_size=batch_size, sampler=valid_sampler,
+                    num_workers=num_workers, pin_memory=pin_memory,
+                )
+                return test_loader, valid_loader
+            test_loader, val_loader = imagenet_get_test_valid_loader(batch_size = 256, random_seed= 42, valid_size = 0.2, shuffle = True,
+                                    num_workers=4, pin_memory=False)
+        else:
+            test_loader = DataLoader(test_data, batch_size=256, shuffle=False)
 
 
-    device = torch.device("cuda:1" if torch.cuda.is_available() else "cpu")
+    
 
     # preds, pred_classes,targets = get_preds_and_targets(net, test_loader, device)
     if post_temp == 'True':
