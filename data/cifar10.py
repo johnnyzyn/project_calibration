@@ -95,7 +95,7 @@ from torch.utils.data.sampler import SubsetRandomSampler
 #     return (train_loader, valid_loader)
 
 def get_train_valid_loader(batch_size,
-                           augment,
+                           augment=True,
                            random_seed=1,
                            valid_size=0.1,
                            shuffle=True,

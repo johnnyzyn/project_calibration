@@ -15,6 +15,17 @@
                 "--csv_file", "sss/cifar10_sss_p1.csv",
                 "--image_dataset", "cifar10", 
             ]
-        }
+        },{
+            "name": "train other loss",
+            "type": "python",
+            "request": "launch",
+            "program": "train_focal_setting.py",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "args": [
+                "--loss", "ce",
+                "--archi_num", "1"
+            ]
+        },
     ]
 }
