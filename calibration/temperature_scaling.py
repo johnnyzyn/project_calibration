@@ -53,8 +53,7 @@ class ModelWithTemperature(nn.Module):
 
 
     def forward(self, input):
-        output = self.model(input)
-        logits = output[1]
+        logits = self.model(input)
         return self.temperature_scale(logits)
 
 
@@ -83,13 +82,25 @@ class ModelWithTemperature(nn.Module):
         with torch.no_grad():
             for input, label in valid_loader:
                 input = input.to(device)
-                label = label.to(device)  # Move labels to the same device as the model
-                output = self.model(input)
-                logits = output[1]
-                logits_list.append(logits)  # Assuming logits is a tuple and you need the first element
+                logits = self.model(input)
+                logits_list.append(logits)
                 labels_list.append(label)
             logits = torch.cat(logits_list).to(device)
             labels = torch.cat(labels_list).to(device)
+
+        # with torch.no_grad():
+        #     for input, label in valid_loader:
+        #         input = input
+        #         label = label.to(device)  # Move labels to the same device as the model
+        #         output = self.model(input)
+        #         # logits = output[1]
+        #         logits = output
+        #         logits_list.append(logits)  # Assuming logits is a tuple and you need the first element
+        #         labels_list.append(label)
+        #     logits = torch.cat(logits_list).to(device)
+        #     labels = torch.cat(labels_list).to(device)
+        # print("Logits shape:", logits.shape)
+        # print("Labels shape:", labels.shape)
 
         # Calculate NLL and ECE before temperature scaling
         before_temperature_nll = nll_criterion(logits, labels).item()
